@@ -1,0 +1,42 @@
+name: StreamSafe CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test-ingestion:
+    name: Test Ingestion (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./services/ingestion-go
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      - name: Go Test
+        run: go test -v ./...
+
+  test-moderation:
+    name: Test Moderation (Python)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./services/moderation-python
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install Deps
+        run: |
+          pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Python Test
+        run: echo "Running pytest..." # Replace with 'pytest' once tests exist
