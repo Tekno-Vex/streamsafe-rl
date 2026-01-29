@@ -17,3 +17,7 @@ A low-latency, safety-critical chat moderation system using deterministic rules 
 - Ingestion → Decision: < 20ms
 - Decision service p99: < 50ms
 - RL inference: < 3ms
+## Team & Execution Model
+This project was implemented by a two-engineer team with clear ownership boundaries
+between platform reliability (ingestion, infra, CI/CD) and ML decision systems
+(logging, PPO training, inference, rollout safety).
