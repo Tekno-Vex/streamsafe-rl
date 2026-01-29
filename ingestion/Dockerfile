@@ -1,7 +1,6 @@
-# Minimal Go Dockerfile
-FROM golang:1.21-alpine
+# Upgrade to match your local version
+FROM golang:1.25-alpine
 WORKDIR /app
 COPY . .
-# We build the binary from the cmd/ingest directory
 RUN go build -o ingestor ./cmd/ingest
 CMD ["./ingestor"]
