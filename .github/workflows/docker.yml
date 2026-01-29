@@ -1,0 +1,20 @@
+name: Build & Push Images
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Build Ingestion
+        run: docker build -t streamsafe-ingestion ./ingestion
+
+      - name: Build Moderation
+        run: docker build -t streamsafe-moderation ./moderation
+        
+      - name: Build UI
+        run: docker build -t streamsafe-ui ./ui

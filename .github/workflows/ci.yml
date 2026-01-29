@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./services/ingestion-go
+        working-directory: ./ingestion
     steps:
       - uses: actions/checkout@v4
       - name: Setup Go
@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./services/moderation-python
+        working-directory: ./moderation
     steps:
       - uses: actions/checkout@v4
       - name: Setup Python
@@ -39,4 +39,4 @@ jobs:
           pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       - name: Python Test
-        run: echo "Running pytest..." # Replace with 'pytest' once tests exist
+        run: echo "Running pytest..."
