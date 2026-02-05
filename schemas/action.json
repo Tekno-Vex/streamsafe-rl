@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ModerationAction",
+  "description": "Discrete action space for chat moderation",
+  "version": "1.0.0",
+  "type": "object",
+  "required": ["action_type", "timestamp"],
+  "properties": {
+    "action_type": {
+      "type": "string",
+      "description": "The moderation action to take",
+      "enum": [
+        "IGNORE",
+        "WARN",
+        "TIMEOUT_60S",
+        "TIMEOUT_600S",
+        "TIMEOUT_86400S",
+        "BAN"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "description": "Human-readable reason for action (optional)",
+      "maxLength": 200
+    },
+    "confidence": {
+      "type": "number",
+      "description": "Confidence score for the action (0.0 to 1.0)",
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+    "source": {
+      "type": "string",
+      "description": "Which component made the decision",
+      "enum": ["risk_scorer", "rl_policy", "safety_clamp", "fallback"]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when action was decided"
+    }
+  },
+  "definitions": {
+    "action_descriptions": {
+      "IGNORE": "Allow message through without action",
+      "WARN": "Send warning to user, allow message",
+      "TIMEOUT_60S": "Timeout user for 60 seconds (1 minute)",
+      "TIMEOUT_600S": "Timeout user for 600 seconds (10 minutes)",
+      "TIMEOUT_86400S": "Timeout user for 86400 seconds (24 hours)",
+      "BAN": "Permanently ban user from channel"
+    }
+  }
+}
