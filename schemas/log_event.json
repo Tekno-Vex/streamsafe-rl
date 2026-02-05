@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ModerationLogEvent",
+  "description": "Complete logging event for offline RL training dataset",
+  "version": "1.0.0",
+  "type": "object",
+  "required": [
+    "event_id",
+    "schema_version",
+    "timestamp",
+    "state",
+    "action_requested",
+    "action_final",
+    "latency_ms",
+    "decision_path"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "Unique identifier for this log event (UUID)"
+    },
+    "schema_version": {
+      "type": "string",
+      "description": "Version of this schema (for backwards compatibility)",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when event was logged"
+    },
+    "state": {
+      "type": "object",
+      "description": "Full state observation (matches state.json schema)",
+      "$ref": "state.json"
+    },
+    "action_requested": {
+      "type": "object",
+      "description": "Action requested by risk scorer or RL policy",
+      "$ref": "action.json"
+    },
+    "action_final": {
+      "type": "object",
+      "description": "Final action after safety clamp intervention",
+      "$ref": "action.json"
+    },
+    "was_clamped": {
+      "type": "boolean",
+      "description": "Whether safety clamp modified the requested action"
+    },
+    "latency_ms": {
+      "type": "object",
+      "description": "Latency breakdown in milliseconds",
+      "required": ["total", "redis_fetch", "risk_scoring"],
+      "properties": {
+        "total": {
+          "type": "number",
+          "description": "Total end-to-end latency",
+          "minimum": 0
+        },
+        "redis_fetch": {
+          "type": "number",
+          "description": "Time spent fetching from Redis",
+          "minimum": 0
+        },
+        "risk_scoring": {
+          "type": "number",
+          "description": "Time spent computing risk score",
+          "minimum": 0
+        },
+        "rl_inference": {
+          "type": "number",
+          "description": "Time spent on RL policy inference (if applicable)",
+          "minimum": 0
+        },
+        "safety_clamp": {
+          "type": "number",
+          "description": "Time spent in safety clamp logic",
+          "minimum": 0
+        }
+      }
+    },
+    "decision_path": {
+      "type": "string",
+      "description": "Human-readable path taken through decision logic",
+      "enum": [
+        "deterministic_risk_only",
+        "rl_policy_with_clamp",
+        "fail_open_redis_timeout",
+        "fail_open_rl_timeout",
+        "fail_open_error"
+      ]
+    },
+    "failure_reason": {
+      "type": "string",
+      "description": "Reason for failure if fail-open was triggered",
+      "maxLength": 500
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional metadata for debugging",
+      "properties": {
+        "service_version": {
+          "type": "string",
+          "description": "Version of moderation service"
+        },
+        "deployment_env": {
+          "type": "string",
+          "description": "Deployment environment",
+          "enum": ["local", "dev", "staging", "shadow", "production"]
+        },
+        "trace_id": {
+          "type": "string",
+          "description": "Distributed tracing ID for request correlation"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,129 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ModerationState",
+  "description": "State representation for moderation decision-making",
+  "version": "1.0.0",
+  "type": "object",
+  "required": [
+    "message_id",
+    "channel_id",
+    "user_id",
+    "message_text",
+    "timestamp",
+    "user_history",
+    "channel_velocity"
+  ],
+  "properties": {
+    "message_id": {
+      "type": "string",
+      "description": "Unique identifier for the message"
+    },
+    "channel_id": {
+      "type": "string",
+      "description": "Twitch channel identifier"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "Twitch user identifier"
+    },
+    "username": {
+      "type": "string",
+      "description": "Twitch username (display name)"
+    },
+    "message_text": {
+      "type": "string",
+      "description": "Raw chat message content",
+      "maxLength": 500
+    },
+    "message_length": {
+      "type": "integer",
+      "description": "Character count of message",
+      "minimum": 0
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when message was received"
+    },
+    "user_history": {
+      "type": "object",
+      "description": "User behavioral features from Redis",
+      "required": ["messages_last_hour", "warnings_last_24h", "timeouts_last_7d"],
+      "properties": {
+        "messages_last_hour": {
+          "type": "integer",
+          "description": "Number of messages user sent in last 60 minutes",
+          "minimum": 0
+        },
+        "warnings_last_24h": {
+          "type": "integer",
+          "description": "Number of warnings received in last 24 hours",
+          "minimum": 0
+        },
+        "timeouts_last_7d": {
+          "type": "integer",
+          "description": "Number of timeouts received in last 7 days",
+          "minimum": 0
+        },
+        "account_age_days": {
+          "type": "integer",
+          "description": "Age of user account in days",
+          "minimum": 0
+        },
+        "is_subscriber": {
+          "type": "boolean",
+          "description": "Whether user is a channel subscriber"
+        },
+        "is_moderator": {
+          "type": "boolean",
+          "description": "Whether user is a channel moderator"
+        }
+      }
+    },
+    "channel_velocity": {
+      "type": "object",
+      "description": "Channel-level activity metrics from Redis",
+      "required": ["messages_per_minute", "active_users"],
+      "properties": {
+        "messages_per_minute": {
+          "type": "number",
+          "description": "Current message rate in channel",
+          "minimum": 0
+        },
+        "active_users": {
+          "type": "integer",
+          "description": "Number of active chatters in last 5 minutes",
+          "minimum": 0
+        },
+        "recent_timeouts": {
+          "type": "integer",
+          "description": "Number of timeouts issued in last 10 minutes",
+          "minimum": 0
+        }
+      }
+    },
+    "features": {
+      "type": "object",
+      "description": "Pre-computed or derived features",
+      "properties": {
+        "contains_caps": {
+          "type": "boolean",
+          "description": "Message contains excessive capitals"
+        },
+        "contains_urls": {
+          "type": "boolean",
+          "description": "Message contains URLs"
+        },
+        "repeated_chars": {
+          "type": "boolean",
+          "description": "Message contains repeated character patterns"
+        },
+        "emote_count": {
+          "type": "integer",
+          "description": "Number of Twitch emotes in message",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}
