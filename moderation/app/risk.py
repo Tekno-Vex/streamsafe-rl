@@ -1,3 +1,4 @@
+from app.safety import SafetyClamp
 import asyncio
 import logging
 from typing import Any, Dict, Optional
@@ -53,6 +54,7 @@ class RiskScorer:
         """
         self.redis_client = redis_client
         self.redis_timeout = redis_timeout
+        self.safety = SafetyClamp()
     
     async def fetch_user_history(self, user_id: str, channel_id: str) -> Dict[str, Any]:
         """ Fetch user behavior history from Redis """
@@ -298,6 +300,17 @@ class RiskScorer:
 
             # map to action
             action = self.score_to_action(risk_score)
+
+            # --- START SAFETY CLAMP ---
+            # 1. Get safety features (Default to safe values if missing)
+            is_mod = features.get("is_moderator", 0) == 1
+            trust_score = 0.5  # Placeholder until we have real trust data
+
+            # 2. Clamp the action
+            safe_action = self.safety.clamp(action, trust_score, is_mod)
+
+            # 3. Update the action variable
+            action = safe_action
 
             logger.info(f"Scored message from {user_id}: risk={risk_score:.3f}, action={action}")
             
