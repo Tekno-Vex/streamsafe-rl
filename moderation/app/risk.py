@@ -35,15 +35,15 @@ class RiskScorer:
 
     # Feature weights for weighted scoring
     WEIGHTS = {
-        "warnings_last_24h": 0.2,
-        "timeouts_last_7d": 0.25,
-        "messages_last_hour": 0.15,
+        "warnings_last_24h": 0.6,    # INCREASED from 0.2 (Big impact)
+        "timeouts_last_7d": 0.3,     # INCREASED from 0.25
+        "messages_last_hour": 0.1,
         "messages_per_minute": 0.1,
         "repeated_chars": 0.1,
         "contains_urls": 0.1,
         "contains_caps": 0.05,
-        "is_moderator": -0.1, # negative = reduces risk
-        "is_subscriber": -0.05 # negative = reduces risk
+        "is_moderator": -0.5,        # Stronger protection for mods
+        "is_subscriber": -0.2 
     }
 
     def __init__(self, redis_client: redis.Redis, redis_timeout: float = 0.5):
@@ -303,7 +303,7 @@ class RiskScorer:
 
             # --- START SAFETY CLAMP ---
             # 1. Get safety features (Default to safe values if missing)
-            is_mod = features.get("is_moderator", 0) == 1
+            is_mod = user_history.get("is_moderator", 0) == 1
             trust_score = 0.5  # Placeholder until we have real trust data
 
             # 2. Clamp the action

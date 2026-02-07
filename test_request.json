@@ -1,8 +1,0 @@
-{
-  "message_id": "msg_test_01", 
-  "user_id": "test_user_77", 
-  "username": "tester", 
-  "channel_id": "123", 
-  "message_text": "THIS IS A TEST MESSAGE TO TRIGGER THE DASHBOARD", 
-  "timestamp": "2026-02-07T12:00:00Z"
-}
