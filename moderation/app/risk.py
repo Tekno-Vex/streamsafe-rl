@@ -1,4 +1,4 @@
-from app.safety import SafetyClamp
+from app.safety_clamp import SafetyClamp
 import asyncio
 import logging
 from typing import Any, Dict, Optional

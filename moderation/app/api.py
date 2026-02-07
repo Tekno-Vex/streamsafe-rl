@@ -3,23 +3,34 @@
 
 import asyncio
 import logging
+import time
+import statistics
 import json
 import os
 import uuid
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, List
 from contextlib import asynccontextmanager
-from app.logger_pipeline import ModerationEventLogger
+from collections import deque
 
-import uvloop
+# Fast API & Pydantic
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import redis.asyncio as redis
 
+# App Modules
+from app.executor import ActionExecutor
+from app.logger_pipeline import ModerationEventLogger
 from app.risk import RiskScorer, ActionType
 
-# use uvloop for better async performance (target of p99)
-asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+# use uvloop for better async performance (target of p99), NOT ON WINDOWS
+try:
+    import uvloop
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+    print("🚀 uvloop enabled for high-performance async")
+except ImportError:
+    print("⚠️ uvloop not available (running on Windows?), using standard asyncio")
 
 # configure structured logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",)
@@ -55,6 +66,23 @@ class HealthResponse(BaseModel):
 redis_client: redis.Redis = None
 risk_scorer: RiskScorer = None
 event_logger: ModerationEventLogger = None
+executor: ActionExecutor = None
+
+# --- NEW: METRICS STORE ---
+# We keep the last 1000 request times to calculate live p50/p99 latency
+latency_history = deque(maxlen=1000)
+# We count actions since startup
+action_counts: Dict[str, int] = {"BAN": 0, "TIMEOUT_600S": 0, "TIMEOUT_60S": 0, "WARN": 0, "IGNORE": 0}
+
+def update_metrics(action: ActionType, latency_ms: float):
+    """Helper to update stats safely"""
+    latency_history.append(latency_ms)
+    # Convert Enum to string key (e.g., ActionType.BAN -> "BAN")
+    key = action.value
+    if key in action_counts:
+        action_counts[key] += 1
+    else:
+        action_counts[key] = 1
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -64,7 +92,7 @@ async def lifespan(app: FastAPI):
     Startup: Initialize Redis client and RiskScorer instance
     Shutdown: Cleanup connections
     """
-    global redis_client, risk_scorer, event_logger
+    global redis_client, risk_scorer, event_logger, executor
 
     # Startup
     logger.info("Starting moderation service...")
@@ -88,6 +116,10 @@ async def lifespan(app: FastAPI):
         event_logger = ModerationEventLogger(kafka_enabled=False, parquet_output_dir="./logs/parquet", parquet_batch_size=100,)
         logger.info("Event Logger initialized successfully")
 
+        # Initialize ActionExecutor
+        executor = ActionExecutor() # <--- ADD THIS BLOCK
+        logger.info("ActionExecutor initialized successfully")
+
     except Exception as e:
         logger.error(f"Failed to initialize service: {e}")
         raise
@@ -105,7 +137,38 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app with lifespan context manager
 app = FastAPI(title="StreamSafe-RL Moderation Service", description="Async moderation decisions with fail-open safety", version="1.0.0", lifespan=lifespan,)
 
+# --- NEW: ENABLE CORS ---
+# This allows your React app (running on localhost:5173) to talk to this API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
+
 ## Endpoints
+@app.get("/metrics")
+async def get_metrics():
+    """Return live system stats for the dashboard"""
+    if not latency_history:
+        p50 = 0
+        p99 = 0
+    else:
+        p50 = statistics.median(latency_history)
+        # Calculate 99th percentile (approximate)
+        if len(latency_history) > 1:
+            p99 = statistics.quantiles(latency_history, n=100)[98]
+        else:
+            p99 = latency_history[0]
+
+    return {
+        "p50_latency_ms": round(p50, 2),
+        "p99_latency_ms": round(p99, 2),
+        "action_distribution": action_counts,
+        "policy_version": "v1.0.0 (Rule-Based)"
+    }
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check() -> HealthResponse:
     """
@@ -177,6 +240,18 @@ async def moderate(request: ModerationRequest) -> ModerationResponse:
             action = risk_scorer.score_to_action(risk_score)
             decision_path = "deterministic_risk_only"
             failure_reason = None
+
+            # --- START EXECUTION TRIGGER (User Story C4) ---
+            # Fire-and-forget execution task
+            # We use create_task so we don't slow down the response waiting for rate limits
+            if executor:
+                asyncio.create_task(
+                    executor.execute_action(
+                        user_id=request.user_id,
+                        action=action,
+                        reason=f"Risk Score: {risk_score:.2f}"
+                    )
+                )
         
         except asyncio.TimeoutError:
             logger.warning(f"Risk scoring timeout for message {request.message_id}  failing open")
@@ -204,6 +279,7 @@ async def moderate(request: ModerationRequest) -> ModerationResponse:
 
         # calculate latency
         latency_ms = (time.time() - start_time) * 1000.0
+        update_metrics(action, latency_ms)
 
         # log event for RL training (async, non-blocking)
         asyncio.create_task(
@@ -241,6 +317,7 @@ async def moderate(request: ModerationRequest) -> ModerationResponse:
     except Exception as e:
         logger.error(f"Unexpected error in /moderate: {e}", exc_info=True)
         latency_ms = (time.time() - start_time) * 1000.0
+        update_metrics(ActionType.IGNORE, latency_ms)
         return ModerationResponse(
             message_id=request.message_id,
             action=ActionType.IGNORE.value,
