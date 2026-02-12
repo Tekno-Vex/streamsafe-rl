@@ -77,10 +77,8 @@ func (c *Client) readPump() error {
 			return err
 		}
 
-		rawLine := string(rawBytes)
-
-		// 1. Parse the line using our new tool
-		msg := parser.Parse(rawLine)
+		// 1. Parse the line using our new tool (byte-level)
+		msg := parser.ParseBytes(rawBytes)
 
 		// 2. If it returned nil, it was junk (JOIN/PART). Ignore it.
 		if msg == nil {
@@ -98,17 +96,10 @@ func (c *Client) readPump() error {
 		// Update Queue Depth Gauge
 		metrics.QueueDepth.Set(float64(len(c.DataChan)))
 		// 4. If it is CHAT, put it on the Conveyor Belt.
-		// "select" allows us to handle the case where the belt is full.
-		select {
-		case c.DataChan <- *msg:
+		// This blocks producers when the belt is full (backpressure).
+		c.DataChan <- *msg
 
-			// Success! Message added to channel.
-			metrics.MessagesProcessed.Inc() // +1 Processed
-		default:
-			// The belt is full! We drop the message (Backpressure).
-			// This prevents our program from crashing if Twitch sends 1 million msgs/sec.
-			metrics.MessagesDropped.Inc() // +1 Dropped
-			log.Println("WARNING: Dropping message, channel full!")
-		}
+		// Success! Message added to channel.
+		metrics.MessagesProcessed.Inc() // +1 Processed
 	}
 }

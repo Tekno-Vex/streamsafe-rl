@@ -39,4 +39,4 @@ jobs:
           pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       - name: Python Test
-        run: echo "Running pytest..."
+        run: pytest -v

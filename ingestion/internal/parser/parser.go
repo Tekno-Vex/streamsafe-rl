@@ -1,81 +1,119 @@
 package parser
 
 import (
-	"strings"
+	"bytes"
 	"time"
 )
 
 // 1. This is the clean "Form" we want to fill out for every message.
 type Message struct {
-	Type      string    // "CHAT", "PING", or "SYSTEM"
-	User      string    // The username (e.g., "helloimjoe")
-	Channel   string    // The channel (e.g., "jasontheween")
-	Content   string    // The actual text (e.g., "hiiii")
-	Timestamp time.Time // When we received it
+	Type         string    // "CHAT", "PING", or "SYSTEM"
+	User         string    // The username (e.g., "helloimjoe")
+	UserID       string    // Twitch user-id tag, if present
+	RoomID       string    // Twitch room-id tag, if present
+	Channel      string    // The channel (e.g., "jasontheween")
+	Content      string    // The actual text (e.g., "hiiii")
+	MessageBytes []byte    // Raw message bytes for content
+	Timestamp    time.Time // When we received it
 }
 
 // 2. This function takes the raw string and fills out the Form.
 func Parse(rawLine string) *Message {
-	// If the line is empty, ignore it.
-	if len(rawLine) == 0 {
+	return ParseBytes([]byte(rawLine))
+}
+
+// ParseBytes parses raw IRC frames without decoding.
+func ParseBytes(rawBytes []byte) *Message {
+	if len(rawBytes) == 0 {
 		return nil
 	}
 
-	// 3. Handle PING messages (Twitch sends these to check if we are alive).
-	if strings.HasPrefix(rawLine, "PING") {
-		return &Message{Type: "PING", Content: rawLine}
+	if bytes.HasPrefix(rawBytes, []byte("PING")) {
+		return &Message{Type: "PING", Content: string(rawBytes), Timestamp: time.Now()}
 	}
 
-	// 4. If it's not a PING, we split the string by spaces.
-	// Raw Format Example:
-	// :shwipp_!shwipp_@... PRIVMSG #jasontheween :hiiii
-	parts := strings.Split(rawLine, " ")
-
+	parts := bytes.Split(rawBytes, []byte(" "))
 	if len(parts) < 4 {
-		return nil // Not a valid message
+		return nil
 	}
 
-	// 5. Look for the "PRIVMSG" command (which means "Private Message", aka Chat).
-	// Sometimes the command is in index 2 (if tags are present) or index 1.
 	commandIndex := -1
 	for i, part := range parts {
-		if part == "PRIVMSG" {
+		if bytes.Equal(part, []byte("PRIVMSG")) {
 			commandIndex = i
 			break
 		}
 	}
-
-	// If we didn't find PRIVMSG, it's a JOIN/PART/SYSTEM message. We ignore those (Filtering).
 	if commandIndex == -1 {
 		return nil
 	}
 
-	// 6. Extract the Username
-	// The user part looks like ":shwipp_!..."
-	// We take the part before the "!", and remove the ":" at the start.
+	var userID, roomID string
+	if len(parts) > 0 && len(parts[0]) > 0 && parts[0][0] == '@' {
+		userID, roomID = parseTags(parts[0])
+	}
+
 	userPart := parts[commandIndex-1]
 	user := ""
-	if strings.Contains(userPart, "!") {
-		user = strings.Split(userPart, "!")[0]
-		user = strings.TrimPrefix(user, ":") // Remove the leading colon
+	if idx := bytes.IndexByte(userPart, '!'); idx != -1 {
+		userBytes := userPart[:idx]
+		if len(userBytes) > 0 && userBytes[0] == ':' {
+			userBytes = userBytes[1:]
+		}
+		user = string(userBytes)
 	}
 
-	// 7. Extract the Channel
-	channel := parts[commandIndex+1]
-	channel = strings.TrimPrefix(channel, "#")
+	channelPart := parts[commandIndex+1]
+	if len(channelPart) > 0 && channelPart[0] == '#' {
+		channelPart = channelPart[1:]
+	}
+	channel := string(channelPart)
 
-	// 8. Extract the Content (The chat message)
-	// Everything after "PRIVMSG #channel :" is the message.
-	// We re-join the rest of the string parts.
 	contentStartIndex := commandIndex + 2
-	content := strings.Join(parts[contentStartIndex:], " ")
-	content = strings.TrimPrefix(content, ":") // Remove the leading colon
+	contentBytes := []byte{}
+	if contentStartIndex < len(parts) {
+		contentBytes = bytes.Join(parts[contentStartIndex:], []byte(" "))
+		if len(contentBytes) > 0 && contentBytes[0] == ':' {
+			contentBytes = contentBytes[1:]
+		}
+	}
 
 	return &Message{
-		Type:      "CHAT",
-		User:      user,
-		Channel:   channel,
-		Content:   content,
-		Timestamp: time.Now(),
+		Type:         "CHAT",
+		User:         user,
+		UserID:       userID,
+		RoomID:       roomID,
+		Channel:      channel,
+		Content:      string(contentBytes),
+		MessageBytes: contentBytes,
+		Timestamp:    time.Now(),
 	}
+}
+
+func parseTags(tagBytes []byte) (string, string) {
+	if len(tagBytes) == 0 || tagBytes[0] != '@' {
+		return "", ""
+	}
+
+	userID := ""
+	roomID := ""
+	trimmed := tagBytes[1:]
+	items := bytes.Split(trimmed, []byte(";"))
+	for _, item := range items {
+		if len(item) == 0 {
+			continue
+		}
+		if eqIdx := bytes.IndexByte(item, '='); eqIdx != -1 {
+			key := item[:eqIdx]
+			value := item[eqIdx+1:]
+			if bytes.Equal(key, []byte("user-id")) {
+				userID = string(value)
+			}
+			if bytes.Equal(key, []byte("room-id")) {
+				roomID = string(value)
+			}
+		}
+	}
+
+	return userID, roomID
 }

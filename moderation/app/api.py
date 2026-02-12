@@ -113,7 +113,18 @@ async def lifespan(app: FastAPI):
         logger.info("RiskScorer initialized successfully")
 
         # Initialize Event Logger
-        event_logger = ModerationEventLogger(kafka_enabled=False, parquet_output_dir="./logs/parquet", parquet_batch_size=100,)
+        kafka_enabled_env = os.getenv("KAFKA_ENABLED", "true").strip().lower()
+        kafka_enabled = kafka_enabled_env in ("1", "true", "yes", "y")
+        kafka_bootstrap = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+        parquet_output_dir = os.getenv("PARQUET_OUTPUT_DIR", "./logs/parquet")
+        parquet_batch_size = int(os.getenv("PARQUET_BATCH_SIZE", "100"))
+
+        event_logger = ModerationEventLogger(
+            kafka_enabled=kafka_enabled,
+            kafka_bootstrap_servers=kafka_bootstrap,
+            parquet_output_dir=parquet_output_dir,
+            parquet_batch_size=parquet_batch_size,
+        )
         logger.info("Event Logger initialized successfully")
 
         # Initialize ActionExecutor
@@ -257,7 +268,7 @@ async def moderate(request: ModerationRequest) -> ModerationResponse:
             logger.warning(f"Risk scoring timeout for message {request.message_id}  failing open")
             action = ActionType.IGNORE
             risk_score = 0.0
-            decision_path = "fail-open-timeout"
+            decision_path = "fail_open_redis_timeout"
             failure_reason = "Risk scoring timeout"
             redis_fetch_ms = 0.0
             # Use empty defaults for logging
@@ -269,7 +280,7 @@ async def moderate(request: ModerationRequest) -> ModerationResponse:
             logger.error(f"Error during risk scoring {e}", exc_info=True)
             action = ActionType.IGNORE
             risk_score = 0.0
-            decision_path = "fail-open-error"
+            decision_path = "fail_open_error"
             failure_reason = str(e)
             redis_fetch_ms = 0.0
             # Use empty defaults

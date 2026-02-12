@@ -76,7 +76,7 @@ services:
       REDIS_TIMEOUT: "0.5"
       
       # Kafka configuration
-      KAFKA_ENABLED: "false"  # Set to "true" when ready
+      KAFKA_ENABLED: "true"
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       KAFKA_TOPIC: moderation-events
       
