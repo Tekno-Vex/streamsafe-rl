@@ -57,6 +57,31 @@ services:
     networks:
       - streamsafe
 
+  # Ingestion Service - Twitch IRC WebSocket client (Go)
+  ingestion:
+    build:
+      context: ./ingestion
+      dockerfile: Dockerfile
+    container_name: streamsafe-ingestion
+    ports:
+      - "8080:8080"
+    environment:
+      # Twitch IRC configuration
+      TWITCH_IRC_URL: "wss://irc-ws.chat.twitch.tv:443"
+      TWITCH_CHANNEL: "kaicenat"
+      
+      # Logging
+      LOG_LEVEL: INFO
+    networks:
+      - streamsafe
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
   # Moderation Service - the core decision service
   moderation:
     build:
