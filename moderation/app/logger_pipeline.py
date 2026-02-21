@@ -76,6 +76,12 @@ class ModerationEventLogger:
         ("latency_rl_inference_ms", pa.float64()),
         ("latency_safety_clamp_ms", pa.float64()),
         
+        # RL Shadow Mode Data
+        ("rl_action", pa.string()),
+        ("rl_probs", pa.string()),  # JSON string of probabilities
+        ("rl_latency_ms", pa.float64()),
+        ("rl_agreement", pa.bool_()),
+        
         # Decision metadata
         ("decision_path", pa.string()),
         ("failure_reason", pa.string()),
@@ -136,6 +142,10 @@ class ModerationEventLogger:
         redis_fetch_ms: float,
         decision_path: str,
         failure_reason: Optional[str] = None,
+        rl_action: Optional[str] = None,
+        rl_probs: Optional[Dict[str, float]] = None,
+        rl_latency_ms: float = 0.0,
+        rl_agreement: bool = False,
     ) -> str:
         """
         Log a moderation event.
@@ -185,8 +195,16 @@ class ModerationEventLogger:
                 "total": latency_ms,
                 "redis_fetch": redis_fetch_ms,
                 "risk_scoring": latency_ms - redis_fetch_ms,
-                "rl_inference": 0.0,
+                "rl_inference": rl_latency_ms,
                 "safety_clamp": 0.0,
+            },
+
+            # RL Shadow Mode Data
+            "rl_shadow": {
+                "action": rl_action,
+                "action_probs": rl_probs or {},
+                "latency_ms": rl_latency_ms,
+                "agreement_with_baseline": rl_agreement,
             },
 
             # Metadata
@@ -271,6 +289,12 @@ class ModerationEventLogger:
                 "latency_risk_scoring_ms": event["latency_ms"]["risk_scoring"],
                 "latency_rl_inference_ms": event["latency_ms"]["rl_inference"],
                 "latency_safety_clamp_ms": event["latency_ms"]["safety_clamp"],
+
+                # RL Shadow Mode Data
+                "rl_action": event["rl_shadow"].get("action", ""),
+                "rl_probs": json.dumps(event["rl_shadow"].get("action_probs", {})),
+                "rl_latency_ms": event["rl_shadow"].get("latency_ms", 0.0),
+                "rl_agreement": event["rl_shadow"].get("agreement_with_baseline", False),
 
                 # Metadata
                 "decision_path": event["decision_path"],

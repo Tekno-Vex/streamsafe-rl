@@ -1,11 +1,11 @@
-from app.safety_clamp import SafetyClamp
+from .safety_clamp import SafetyClamp
 import asyncio
 import logging
 from typing import Any, Dict, Optional
 from datetime import datetime
 from enum import Enum
 
-import redis.asyncio as redis 
+import redis.asyncio as redis
 
 # configure logging
 logger = logging.getLogger(__name__)

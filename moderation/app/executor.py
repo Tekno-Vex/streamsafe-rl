@@ -1,7 +1,7 @@
 import logging
 import asyncio
 import time
-from app.schemas.action import ActionType
+from .schemas.action import ActionType
 
 logger = logging.getLogger("executor")
 

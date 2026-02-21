@@ -20,9 +20,10 @@ from pydantic import BaseModel, Field
 import redis.asyncio as redis
 
 # App Modules
-from app.executor import ActionExecutor
-from app.logger_pipeline import ModerationEventLogger
-from app.risk import RiskScorer, ActionType
+from .executor import ActionExecutor
+from .logger_pipeline import ModerationEventLogger
+from .risk import RiskScorer, ActionType
+from .onnx_infer import ONNXInferenceEngine
 
 # use uvloop for better async performance (target of p99), NOT ON WINDOWS
 try:
@@ -67,7 +68,7 @@ redis_client: redis.Redis = None
 risk_scorer: RiskScorer = None
 event_logger: ModerationEventLogger = None
 executor: ActionExecutor = None
-
+onnx_engine: ONNXInferenceEngine = None
 # --- NEW: METRICS STORE ---
 # We keep the last 1000 request times to calculate live p50/p99 latency
 latency_history = deque(maxlen=1000)
@@ -92,7 +93,7 @@ async def lifespan(app: FastAPI):
     Startup: Initialize Redis client and RiskScorer instance
     Shutdown: Cleanup connections
     """
-    global redis_client, risk_scorer, event_logger, executor
+    global redis_client, risk_scorer, event_logger, executor, onnx_engine
 
     # Startup
     logger.info("Starting moderation service...")
@@ -130,6 +131,17 @@ async def lifespan(app: FastAPI):
         # Initialize ActionExecutor
         executor = ActionExecutor() # <--- ADD THIS BLOCK
         logger.info("ActionExecutor initialized successfully")
+
+        # Initialize ONNX Runtime (shadow mode by default)
+        onnx_model_path = os.getenv("ONNX_MODEL_PATH", "models/ppo_policy.onnx")
+        shadow_mode = os.getenv("SHADOW_MODE", "true").strip().lower() in ("1", "true", "yes", "y")
+        
+        if os.path.exists(onnx_model_path):
+            onnx_engine = ONNXInferenceEngine.load_from_path(onnx_model_path, shadow_mode=shadow_mode)
+            logger.info(f"ONNX Runtime initialized (shadow_mode={shadow_mode})")
+        else:
+            logger.warning(f"ONNX model not found at {onnx_model_path}, RL inference disabled")
+            onnx_engine = None
 
     except Exception as e:
         logger.error(f"Failed to initialize service: {e}")
@@ -292,6 +304,46 @@ async def moderate(request: ModerationRequest) -> ModerationResponse:
         latency_ms = (time.time() - start_time) * 1000.0
         update_metrics(action, latency_ms)
 
+        # --- SHADOW MODE RL INFERENCE ---
+        rl_action = None
+        rl_probs = None
+        rl_latency_ms = 0.0
+        rl_agreement = False
+
+        if onnx_engine:
+            try:
+                rl_start = time.time()
+                # Construct state features (10-dim) matching ONNX engine expectations
+                state_dict = {
+                    "risk_score": float(risk_score),
+                    "message_count_24h": float(user_history.get("messages_last_hour", 0)),
+                    "warning_count": float(user_history.get("warnings_last_24h", 0)),
+                    "timeout_count": float(user_history.get("timeouts_last_7d", 0)),
+                    "account_age_days": float(user_history.get("account_age_days", 0)),
+                    "follower_count": 0.0,  # Not available in current risk score
+                    "subscriber": user_history.get("is_subscriber", False),
+                    "moderator": user_history.get("is_moderator", False),
+                    "channel_velocity": float(channel_velocity.get("messages_per_minute", 0.0)),
+                    "trust_score": 1.0 - float(risk_score),  # Inverse of risk
+                }
+                
+                # Get RL prediction (shadow mode - no action taken)
+                rl_result = onnx_engine.infer(state_dict)
+                rl_latency_ms = (time.time() - rl_start) * 1000.0
+                
+                if rl_result:
+                    rl_action = rl_result.get("action")
+                    rl_probs = rl_result.get("action_probs")
+                    # Check if RL agrees with baseline decision
+                    rl_agreement = (rl_action == action.value)
+                    logger.info(f"RL inference: action={rl_action}, agreement={rl_agreement}, latency={rl_latency_ms:.2f}ms")
+            except Exception as e:
+                logger.warning(f"RL inference failed (shadow mode continues): {e}")
+                rl_action = None
+                rl_probs = None
+                rl_latency_ms = 0.0
+                rl_agreement = False
+
         # log event for RL training (async, non-blocking)
         asyncio.create_task(
             event_logger.log_event(
@@ -310,6 +362,10 @@ async def moderate(request: ModerationRequest) -> ModerationResponse:
                 redis_fetch_ms=redis_fetch_ms,
                 decision_path=decision_path,
                 failure_reason=failure_reason,
+                rl_action=rl_action,
+                rl_probs=rl_probs,
+                rl_latency_ms=rl_latency_ms,
+                rl_agreement=rl_agreement,
             )
         )
 
