@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/Tekno-Vex/streamsafe-rl/ingestion/internal/metrics" // Import this!
+	"github.com/Tekno-Vex/streamsafe-rl/ingestion/internal/metrics"
 	"github.com/Tekno-Vex/streamsafe-rl/ingestion/internal/parser"
 	"github.com/gorilla/websocket"
 )
@@ -14,20 +14,20 @@ type Client struct {
 	conn           *websocket.Conn
 	url            string
 	channel        string
+	username       string
+	token          string
 	reconnectDelay time.Duration
-
-	// NEW: The "Conveyor Belt".
-	// We send parsed messages out here so 'main.go' can handle them.
-	// The '1000' means it can hold 1000 messages before it gets full (Backpressure).
-	DataChan chan parser.Message
+	DataChan       chan parser.Message
 }
 
-func NewClient(wsUrl, channelName string) *Client {
+func NewClient(wsUrl, channelName, username, token string) *Client {
 	return &Client{
 		url:            wsUrl,
 		channel:        channelName,
+		username:       username,
+		token:          token,
 		reconnectDelay: 1 * time.Second,
-		DataChan:       make(chan parser.Message, 1000), // Initialize the channel
+		DataChan:       make(chan parser.Message, 1000),
 	}
 }
 
@@ -53,7 +53,6 @@ func (c *Client) Connect() {
 
 		c.authenticate()
 
-		// If readPump returns error, loop back and reconnect
 		err = c.readPump()
 		if err != nil {
 			log.Printf("Connection lost: %v", err)
@@ -63,10 +62,10 @@ func (c *Client) Connect() {
 }
 
 func (c *Client) authenticate() {
+	log.Printf("Authenticating as %s...", c.username)
 	c.conn.WriteMessage(websocket.TextMessage, []byte("CAP REQ :twitch.tv/tags twitch.tv/commands"))
-	c.conn.WriteMessage(websocket.TextMessage, []byte("PASS SCHMOOPIIE"))
-	c.conn.WriteMessage(websocket.TextMessage, []byte("NICK justinfan12345"))
-	c.conn.WriteMessage(websocket.TextMessage, []byte("USER justinfan12345 8 * :justinfan12345"))
+	c.conn.WriteMessage(websocket.TextMessage, []byte("PASS "+c.token))
+	c.conn.WriteMessage(websocket.TextMessage, []byte("NICK "+c.username))
 	c.conn.WriteMessage(websocket.TextMessage, []byte("JOIN #"+c.channel))
 }
 
@@ -77,29 +76,33 @@ func (c *Client) readPump() error {
 			return err
 		}
 
-		// 1. Parse the line using our new tool (byte-level)
+		// CRITICAL: Log everything Twitch sends us
+		log.Printf("[DEBUG] RAW: %s", string(rawBytes))
+
+		// Parse the line
 		msg := parser.ParseBytes(rawBytes)
 
-		// 2. If it returned nil, it was junk (JOIN/PART). Ignore it.
 		if msg == nil {
 			continue
 		}
 
-		// 3. If it is a PING, we MUST Pong back or Twitch disconnects us.
 		if msg.Type == "PING" {
 			log.Println("Received PING, sending PONG...")
 			c.conn.WriteMessage(websocket.TextMessage, []byte("PONG :tmi.twitch.tv"))
 			continue
 		}
 
-		// METRICS UPDATE:
-		// Update Queue Depth Gauge
-		metrics.QueueDepth.Set(float64(len(c.DataChan)))
-		// 4. If it is CHAT, put it on the Conveyor Belt.
-		// This blocks producers when the belt is full (backpressure).
-		c.DataChan <- *msg
+		if msg.Type == "JOIN" {
+			log.Printf("Successfully JOINED channel: %s", msg.Channel)
+			continue
+		}
 
-		// Success! Message added to channel.
-		metrics.MessagesProcessed.Inc() // +1 Processed
+		if msg.Type == "NOTICE" {
+			log.Printf("Twitch NOTICE: %s", string(rawBytes))
+		}
+
+		metrics.QueueDepth.Set(float64(len(c.DataChan)))
+		c.DataChan <- *msg
+		metrics.MessagesProcessed.Inc()
 	}
 }

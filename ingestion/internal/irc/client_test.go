@@ -3,7 +3,9 @@ package irc
 import "testing"
 
 func TestNewClientDefaults(t *testing.T) {
-	client := NewClient("wss://example.com", "test")
+	// Update: Pass dummy username and token for the test
+	client := NewClient("wss://example.com", "test", "test_user", "oauth:12345")
+
 	if client == nil {
 		t.Fatal("expected client")
 	}
@@ -13,6 +15,14 @@ func TestNewClientDefaults(t *testing.T) {
 	if client.channel != "test" {
 		t.Fatalf("expected channel to be set")
 	}
+	// Optional: Verify new fields are set correctly
+	if client.username != "test_user" {
+		t.Fatalf("expected username to be set")
+	}
+	if client.token != "oauth:12345" {
+		t.Fatalf("expected token to be set")
+	}
+
 	if client.DataChan == nil {
 		t.Fatalf("expected DataChan to be initialized")
 	}

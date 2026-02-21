@@ -4,7 +4,7 @@ uvicorn[standard]>=0.32.0
 pydantic>=2.10.0
 
 # Async Performance
-# uvloop>=0.21.0 - not supported on windows
+uvloop>=0.21.0 - #not supported on windows
 
 # Redis Client
 redis>=5.2.0

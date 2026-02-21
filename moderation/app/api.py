@@ -101,7 +101,9 @@ async def lifespan(app: FastAPI):
         # Initialize Redis client
         # In local development, we connect to localhost:6379
         # In Docker, use redis://redis:6379
-        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+        redis_host = os.getenv("REDIS_HOST", "localhost")
+        redis_port = os.getenv("REDIS_PORT", "6379")
+        redis_url = f"redis://{redis_host}:{redis_port}"
         redis_client = await redis.from_url(redis_url, decode_responses=True)
 
         # Test Redis connection
