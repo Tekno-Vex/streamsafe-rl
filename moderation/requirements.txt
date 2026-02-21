@@ -16,6 +16,10 @@ kafka-python>=2.0.2
 # Data Format for Logging
 pyarrow>=18.0.0
 
+# ONNX Runtime for RL inference
+onnxruntime>=1.17.0
+numpy>=1.26.0
+
 # Optional: Schema validation utilities
 jsonschema>=4.23.0
 
