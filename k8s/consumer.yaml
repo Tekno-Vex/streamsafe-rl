@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: consumer
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: consumer
+  template:
+    metadata:
+      labels:
+        app: consumer
+    spec:
+      initContainers:
+      - name: wait-for-kafka
+        image: busybox:1.28
+        command: ['sh', '-c', "until nc -z kafka 9092; do echo waiting for kafka; sleep 2; done;"]
+      containers:
+      - name: consumer
+        image: streamsafe-moderation:latest
+        imagePullPolicy: Never
+        command: ["python", "-m", "app.consumer"]
+        env:
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka:9092"
+        - name: KAFKA_TOPIC
+          value: "chat_events"
+        - name: MODERATION_URL
+          value: "http://moderation:8000/moderate"
