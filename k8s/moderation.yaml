@@ -30,6 +30,10 @@ spec:
           value: "kafka:9092"
         - name: KAFKA_BOOTSTRAP_SERVERS  # ADD THIS LINE
           value: "kafka:9092"             # ADD THIS LINE
+        - name: ONNX_MODEL_PATH          # ADD THIS LINE
+          value: "/app/models/ppo_policy.onnx" # ADD THIS LINE
+        - name: SHADOW_MODE              # ADD THIS LINE
+          value: "true"                  # ADD THIS LINE
         envFrom:
         - configMapRef:
             name: streamsafe-config

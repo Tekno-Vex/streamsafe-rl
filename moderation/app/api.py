@@ -323,8 +323,8 @@ async def moderate(request: ModerationRequest) -> ModerationResponse:
                     "timeout_count": float(user_history.get("timeouts_last_7d", 0)),
                     "account_age_days": float(user_history.get("account_age_days", 0)),
                     "follower_count": 0.0,  # Not available in current risk score
-                    "subscriber": user_history.get("is_subscriber", False),
-                    "moderator": user_history.get("is_moderator", False),
+                    "is_subscriber": user_history.get("is_subscriber", False),
+                    "is_moderator": user_history.get("is_moderator", False),
                     "channel_velocity": float(channel_velocity.get("messages_per_minute", 0.0)),
                     "trust_score": 1.0 - float(risk_score),  # Inverse of risk
                 }
@@ -334,7 +334,7 @@ async def moderate(request: ModerationRequest) -> ModerationResponse:
                 rl_latency_ms = (time.time() - rl_start) * 1000.0
                 
                 if rl_result:
-                    rl_action = rl_result.get("action")
+                    rl_action = rl_result.get("rl_action")
                     rl_probs = rl_result.get("action_probs")
                     # Check if RL agrees with baseline decision
                     rl_agreement = (rl_action == action.value)
