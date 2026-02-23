@@ -33,6 +33,9 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # Copy application code
 COPY ./app /app/app
 
+COPY ./models/ppo_policy.onnx /app/models/ppo_policy.onnx
+COPY ./models/ppo_policy.onnx.data /app/models/ppo_policy.onnx.data
+
 # Create logs directory for Parquet files
 RUN mkdir -p /app/logs/parquet
 

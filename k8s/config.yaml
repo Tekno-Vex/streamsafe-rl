@@ -5,8 +5,8 @@ metadata:
   namespace: default
 data:
   # Ingestion Settings
-  TWITCH_CHANNEL: Kingsman265_Twitch
-  CHANNEL_NAME: Kingsman265_Twitch
+  TWITCH_CHANNEL: Jynxzi
+  CHANNEL_NAME: Jynxzi
   TWITCH_IRC_URL: wss://irc-ws.chat.twitch.tv:443
   
   # Connection Settings
