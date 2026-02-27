@@ -8,9 +8,10 @@ import (
 
 	"github.com/Tekno-Vex/streamsafe-rl/ingestion/internal/config"
 	"github.com/Tekno-Vex/streamsafe-rl/ingestion/internal/irc"
-	"github.com/Tekno-Vex/streamsafe-rl/ingestion/internal/metrics" // Import this
+	"github.com/Tekno-Vex/streamsafe-rl/ingestion/internal/kafka" // ADD THIS
+	"github.com/Tekno-Vex/streamsafe-rl/ingestion/internal/metrics"
 	"github.com/Tekno-Vex/streamsafe-rl/ingestion/internal/ratelimit"
-	"github.com/prometheus/client_golang/prometheus/promhttp" // Import this
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -18,26 +19,26 @@ func main() {
 
 	cfg := config.LoadConfig()
 
-	// Initialize Metrics
 	metrics.Init()
 
-	// Initialize Rate Limiter (2000 messages per second per channel)
 	limiter := ratelimit.NewPerChannelLimiter(2000)
 
-	// counters for throughput calculation
+	// ADD THIS: Initialize Kafka producer
+	kafkaProducer := kafka.NewProducer("kafka:9092", "chat_events")
+	defer kafkaProducer.Close()
+	log.Println("Kafka producer initialized")
+
 	var (
 		processedCount int64
 		droppedCount   int64
 	)
 
 	go func() {
-		// Existing Health Check
 		http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("OK"))
 		})
 
-		// NEW: Prometheus Metrics Endpoint
 		http.Handle("/metrics", promhttp.Handler())
 
 		log.Println("Health & Metrics running on :8080")
@@ -46,10 +47,9 @@ func main() {
 		}
 	}()
 
-	client := irc.NewClient(cfg.TwitchURL, cfg.TwitchChannel)
+	client := irc.NewClient(cfg.TwitchURL, cfg.TwitchChannel, cfg.TwitchUsername, cfg.TwitchOAuthToken)
 
 	go func() {
-		// calculate and update throughput metrics every second
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
 
@@ -77,7 +77,6 @@ func main() {
 
 	go func() {
 		for msg := range client.DataChan {
-			// Rate limiting check
 			if !limiter.Allow(msg.Channel) {
 				atomic.AddInt64(&droppedCount, 1)
 				metrics.MessagesDropped.Inc()
@@ -89,8 +88,10 @@ func main() {
 			metrics.MessagesProcessed.Inc()
 			metrics.QueueDepth.Set(float64(len(client.DataChan)))
 
-			// process message (send to moderation service, log, etc.)
-			_ = msg
+			// CHANGE THIS: Publish to Kafka instead of discarding
+			if err := kafkaProducer.PublishMessage(msg); err != nil {
+				log.Printf("Failed to publish message: %v", err)
+			}
 		}
 	}()
 

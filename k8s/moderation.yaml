@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: moderation
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: moderation
+  template:
+    metadata:
+      labels:
+        app: moderation
+    spec:
+      initContainers:
+      - name: wait-for-kafka
+        image: busybox:1.28
+        command: ['sh', '-c', "until nc -z kafka 9092; do echo waiting for kafka; sleep 2; done;"]
+      containers:
+      - name: moderation
+        image: streamsafe-moderation:latest
+        imagePullPolicy: Never
+        env:
+        - name: REDIS_HOST
+          value: "redis"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: KAFKA_BROKER
+          value: "kafka:9092"
+        - name: KAFKA_BOOTSTRAP_SERVERS  # ADD THIS LINE
+          value: "kafka:9092"             # ADD THIS LINE
+        - name: ONNX_MODEL_PATH          # ADD THIS LINE
+          value: "/app/models/ppo_policy.onnx" # ADD THIS LINE
+        - name: SHADOW_MODE              # ADD THIS LINE
+          value: "true"                  # ADD THIS LINE
+        envFrom:
+        - configMapRef:
+            name: streamsafe-config
+        ports:
+        - containerPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: moderation
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app: moderation
+  ports:
+  - port: 8000
+    targetPort: 8000
+    nodePort: 30000
